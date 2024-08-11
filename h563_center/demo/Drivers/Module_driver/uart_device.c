@@ -63,6 +63,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		pData = &UART2_Data;
 	}
+	
 	xSemaphoreGiveFromISR(pData->uart_send_semaphore, NULL);
 }
 

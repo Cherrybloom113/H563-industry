@@ -1,0 +1,7 @@
+--target=arm-arm-none-eabi -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -mfloat-abi=hard -masm=auto  -Wa,armasm,--diag_suppress=A1950W -c
+-gdwarf-4
+-I./RTE/_boot_demo
+-IC:/Users/liaos/AppData/Local/Arm/Packs/ARM/CMSIS/5.9.0/CMSIS/Core/Include
+-IC:/Users/liaos/AppData/Local/Arm/Packs/Keil/STM32H5xx_DFP/1.2.0/Drivers/CMSIS/Device/ST/STM32H5xx/Include
+-Wa,armasm,--pd,"__UVISION_VERSION SETA 539" -Wa,armasm,--pd,"_RTE_ SETA 1" -Wa,armasm,--pd,"STM32H563xx SETA 1" -Wa,armasm,--pd,"_RTE_ SETA 1"
+-o boot_demo/startup_stm32h563xx.o "startup_stm32h563xx.s"

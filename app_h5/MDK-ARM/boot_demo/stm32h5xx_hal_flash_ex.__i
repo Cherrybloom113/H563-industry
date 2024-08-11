@@ -1,0 +1,8 @@
+-xc -std=c11 --target=arm-arm-none-eabi -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -mfloat-abi=hard -c
+-fno-rtti -funsigned-char -fshort-enums -fshort-wchar
+-gdwarf-4 -O3 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Core/Inc -I ../Drivers/STM32H5xx_HAL_Driver/Inc -I ../Drivers/STM32H5xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32H5xx/Include -I ../Drivers/CMSIS/Include
+-I./RTE/_boot_demo
+-IC:/Users/liaos/AppData/Local/Arm/Packs/ARM/CMSIS/5.9.0/CMSIS/Core/Include
+-IC:/Users/liaos/AppData/Local/Arm/Packs/Keil/STM32H5xx_DFP/1.2.0/Drivers/CMSIS/Device/ST/STM32H5xx/Include
+-D__UVISION_VERSION="539" -D_RTE_ -DSTM32H563xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32H563xx
+-o boot_demo/stm32h5xx_hal_flash_ex.o -MD "../Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_flash_ex.c"

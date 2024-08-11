@@ -26,6 +26,7 @@
 #include "usart.h"
 #include "usb.h"
 #include "gpio.h"
+#include "bootloader.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -65,27 +66,6 @@ void MX_FREERTOS_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void mymemcpy(void *dest, void *src, int len)
-{
-	unsigned char *pcDest = dest;
-	unsigned char *pcSrc = src;
-	while(len--)
-	{
-		pcDest = pcSrc;
-		pcDest++;
-		pcSrc--;		
-	}
-}
-
-void mymemset(void *dest, int value, size_t len) {
-    unsigned char *d = dest;
-    while (len > 0) {
-        *d++ = (unsigned char)value;
-        len--;
-    }
-}
-
-
 /* USER CODE END 0 */
 
 /**
@@ -96,6 +76,12 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	if(isSoftReset())
+	{
+		extern void start_app(uint32_t vector);
+
+		start_app(get_app_vector());
+	} 
 
   /* USER CODE END 1 */
 

@@ -13,5 +13,9 @@ typedef struct FirmwareInfo {
 
 
 void BootLoaderTask(void *param);
+int isSoftReset(void);
+uint32_t get_app_vector(void);
+
+
 
 #endif

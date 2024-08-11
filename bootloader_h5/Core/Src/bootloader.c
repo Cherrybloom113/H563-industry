@@ -11,8 +11,36 @@
 #include "bootloader.h"
 
 #define CFG_OFFSET		0x081FE000
+#define SECTOR_SIZE (8*1024)
+
 #define UPDATE_TIMEOUT		1000
 static struct UART_Device *g_pUpdateUART;
+
+int isSoftReset(void)
+{
+	return HAL_RCC_GetResetSource() & RCC_RESET_FLAG_SW;
+}
+
+uint32_t get_app_vector(void)
+{
+	PFirmwareInfo ptFirmwareInfo = (PFirmwareInfo)CFG_OFFSET;
+
+	return ptFirmwareInfo->load_addr;
+}
+
+static void SoftReset(void)
+{
+	__set_FAULTMASK(1);//关闭所有中断
+	HAL_NVIC_SystemReset();
+}
+
+static void start_app_c(void)
+{
+	SoftReset();
+}
+
+
+
 
 static uint32_t BE32toLE32(uint8_t *buf)
 {
@@ -107,6 +135,127 @@ static uint32_t CaculateCRC32(uint8_t *buf, uint32_t len) {
 }
 
 
+static int WriteFirmware(uint8_t *firmware_buf, uint32_t len, uint32_t flash_addr)
+{
+    FLASH_EraseInitTypeDef tEraseInit;
+    uint32_t SectorError;
+    uint32_t sectors = (len + (SECTOR_SIZE - 1)) / SECTOR_SIZE;
+    uint32_t flash_offset = flash_addr - 0x08000000;
+    uint32_t bank_sectors;
+    uint32_t erased_sectors = 0;
+    
+    HAL_FLASH_Unlock();
+
+    /* erase bank1 */
+    if (flash_offset < 0x100000)
+    {
+        tEraseInit.TypeErase = FLASH_TYPEERASE_SECTORS;
+        tEraseInit.Banks     = FLASH_BANK_1;
+        tEraseInit.Sector    = flash_offset / SECTOR_SIZE;
+        bank_sectors = (0x100000 - flash_offset) / SECTOR_SIZE;
+        if (sectors <= bank_sectors)
+            erased_sectors = sectors;
+        else
+            erased_sectors = bank_sectors;
+        tEraseInit.NbSectors = erased_sectors;
+        
+        if (HAL_OK != HAL_FLASHEx_Erase(&tEraseInit, &SectorError))
+        {
+            g_pUpdateUART->Send(g_pUpdateUART, (uint8_t *)"HAL_FLASHEx_Erase Failed\r\n", strlen("HAL_FLASHEx_Erase Failed\r\n"), UPDATE_TIMEOUT);
+            HAL_FLASH_Lock();
+            return -1;
+        }
+
+        flash_offset += erased_sectors*SECTOR_SIZE;
+    }
+
+    sectors -= erased_sectors;
+    flash_offset -= 0x100000;
+    
+    /* erase bank2 */
+    if (sectors)
+    {
+        tEraseInit.TypeErase = FLASH_TYPEERASE_SECTORS;
+        tEraseInit.Banks     = FLASH_BANK_2;
+        tEraseInit.Sector    = flash_offset / SECTOR_SIZE;
+        bank_sectors = (0x100000 - flash_offset) / SECTOR_SIZE;
+        if (sectors <= bank_sectors)
+            erased_sectors = sectors;
+        else
+            erased_sectors = bank_sectors;
+        tEraseInit.NbSectors = erased_sectors;
+        
+        if (HAL_OK != HAL_FLASHEx_Erase(&tEraseInit, &SectorError))
+        {
+            g_pUpdateUART->Send(g_pUpdateUART, (uint8_t *)"HAL_FLASHEx_Erase Failed\r\n", strlen("HAL_FLASHEx_Erase Failed\r\n"), UPDATE_TIMEOUT);
+            HAL_FLASH_Lock();
+            return -1;
+        }
+    }
+
+    /* program */
+    len = (len + 15) & ~15;
+
+    for (int i = 0; i < len; i+=16)
+    {
+        if (HAL_OK != HAL_FLASH_Program(FLASH_TYPEPROGRAM_QUADWORD, flash_addr, (uint32_t)firmware_buf))
+        {
+            g_pUpdateUART->Send(g_pUpdateUART, (uint8_t *)"HAL_FLASH_Program Failed\r\n", strlen("HAL_FLASH_Program Failed\r\n"), UPDATE_TIMEOUT);
+            HAL_FLASH_Lock();
+            return -1;
+        }
+
+        flash_addr += 16;
+        firmware_buf += 16;
+    }
+
+
+    HAL_FLASH_Lock();
+    return 0;
+
+}
+
+static int WriteFirmwareInfo(PFirmwareInfo ptFirmwareInfo)
+{
+    FLASH_EraseInitTypeDef tEraseInit;
+    uint32_t SectorError;
+    uint32_t flash_addr = CFG_OFFSET;
+    uint8_t *src_buf = (uint8_t *)ptFirmwareInfo;
+    
+    HAL_FLASH_Unlock();
+
+    /* erase bank2 */
+    tEraseInit.TypeErase = FLASH_TYPEERASE_SECTORS;
+    tEraseInit.Banks     = FLASH_BANK_2;
+    tEraseInit.Sector    = (flash_addr - 0x08000000 - 0x100000) / SECTOR_SIZE;
+    tEraseInit.NbSectors = 1;
+    
+    if (HAL_OK != HAL_FLASHEx_Erase(&tEraseInit, &SectorError))
+    {
+        g_pUpdateUART->Send(g_pUpdateUART, (uint8_t *)"HAL_FLASHEx_Erase Failed\r\n", strlen("HAL_FLASHEx_Erase Failed\r\n"), UPDATE_TIMEOUT);
+        HAL_FLASH_Lock();
+        return -1;
+    }
+
+    /* program */
+    for (int i = 0; i < sizeof(FirmwareInfo); i+=16)
+    {
+        if (HAL_OK != HAL_FLASH_Program(FLASH_TYPEPROGRAM_QUADWORD, flash_addr, (uint32_t)src_buf))
+        {
+            g_pUpdateUART->Send(g_pUpdateUART, (uint8_t *)"HAL_FLASH_Program Failed\r\n", strlen("HAL_FLASH_Program Failed\r\n"), UPDATE_TIMEOUT);
+            HAL_FLASH_Lock();
+            return -1;
+        }
+
+        flash_addr += 16;
+        src_buf += 16;
+    }
+
+    HAL_FLASH_Lock();
+    return 0;
+}
+
+
 void BootLoaderTask(void *param)
 {
 	int err;
@@ -171,6 +320,13 @@ void BootLoaderTask(void *param)
 				{
 					/* download ok */
 					pUSBDevice->Send(pUSBDevice, "download ok", strlen("download ok"), UPDATE_TIMEOUT);
+					WriteFirmware(firmwareBuf, serverFirmInfo.file_len, serverFirmInfo.load_addr);
+					WriteFirmwareInfo(&serverFirmInfo);
+					
+
+					/* jump to app */
+					pUSBDevice->Send(pUSBDevice, "start app", strlen("start app"), UPDATE_TIMEOUT);
+					start_app_c();
 
 				}
 				else
@@ -187,6 +343,7 @@ void BootLoaderTask(void *param)
 		else
 		{
 			/* jump to app */
+			start_app_c();
 		}
 	}
 
