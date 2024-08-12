@@ -42,7 +42,9 @@ extern int errno;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define 	SENOR_MONITOR
+//#define 	SENOR_SWITCH
+//#define 	SENOR_MONITOR
+#define		SENOR_TEMPHUMI
 
 #ifdef SENOR_SWITCH
 
@@ -67,6 +69,20 @@ extern ADC_HandleTypeDef hadc;
 
 #endif
 
+#ifdef SENOR_TEMPHUMI
+
+extern ADC_HandleTypeDef hadc;
+
+#define SLAVE_ADDR						3
+#define NB_BITS							5
+#define NB_INPUT_BITS					0
+#define NB_REGISTERS					0
+#define NB_INPUT_REGISTERS				2
+
+
+#endif
+
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -88,6 +104,79 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+
+#ifdef SENOR_TEMPHUMI
+
+unsigned char Calc_CRC8(unsigned char *message,unsigned char Num)
+{
+	unsigned char i;
+	unsigned char byte;
+	unsigned char crc =0xFF;
+	for (byte = 0;byte<Num;byte++)
+	{
+		crc^=(message[byte]);
+		for(i=8;i>0;--i)
+		{
+			if(crc&0x80)
+				crc=(crc<<1)^0x31;
+			else
+				crc=(crc<<1);
+		}
+	}
+	return crc;
+}//
+
+static 	uint32_t g_temp,g_humi;
+
+static void AHT20_GetData(uint16_t *temp, uint16_t *humi)
+{
+	*temp = g_temp;
+	*humi = g_humi;
+}
+
+
+void AHT20Task(void *param)
+{
+	extern I2C_HandleTypeDef hi2c1;
+	uint8_t aht20_cmd[] = {0xac, 0x33, 0x00};
+	uint8_t tempHumiData[7];
+	uint8_t crc;
+	
+	/* AHT20 ready */
+	vTaskDelay(10);
+
+	while(1)
+	{
+		 if (HAL_OK == HAL_I2C_Master_Transmit(&hi2c1, 0x70, aht20_cmd, 3, 100))
+		 {
+		 	/* AHT20 ready */
+			vTaskDelay(100);
+			if(HAL_OK == HAL_I2C_Master_Receive(&hi2c1, 0x70, tempHumiData, 7, 100))
+			{
+				/* caculate crc */
+				crc = Calc_CRC8(tempHumiData, 6);
+				if(crc == tempHumiData[6])
+				{
+					/* read ok */
+					g_humi = ((uint32_t)tempHumiData[1] << 12) | ((uint32_t)tempHumiData[2] << 4) | ((uint32_t)tempHumiData[3] >> 4);
+					g_temp = (((uint32_t)tempHumiData[3] & 0x0f ) << 16) | ((uint32_t)tempHumiData[4] << 8) | ((uint32_t)tempHumiData[5]);
+					
+					g_humi = g_humi * 100 * 10 / 0x100000;	/* 0.1% */
+					g_temp = g_temp * 200 * 10 / 0x100000 - 500;
+
+
+
+				}
+			}
+		 }
+
+		 vTaskDelay(30);
+	}
+
+	
+}
+
+#endif
 
 /* USER CODE END FunctionPrototypes */
 
@@ -128,6 +217,11 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  #ifdef SENOR_TEMPHUMI
+  
+  osThreadNew(AHT20Task, NULL, &defaultTask_attributes);
+
+  #endif
 	  
   /* USER CODE END RTOS_THREADS */
 
@@ -234,6 +328,16 @@ void StartDefaultTask(void *argument)
 
 #endif
 
+#ifdef SENOR_TEMPHUMI
+
+		uint16_t temp,humi;
+		AHT20_GetData(&temp,&humi);
+		mb_mapping->tab_input_registers[0] = temp;
+		mb_mapping->tab_input_registers[1] = humi;
+
+
+#endif
+
 		rc = modbus_reply(ctx, query, rc, mb_mapping);
 		if (rc == -1) {
 			//break;
@@ -293,6 +397,36 @@ void StartDefaultTask(void *argument)
 
 
 #endif
+
+#ifdef SENOR_TEMPHUMI
+	
+			/* ctrl the led and beep */
+		  if (mb_mapping->tab_bits[0])
+		HAL_GPIO_WritePin(BEEP1_GPIO_Port, BEEP1_Pin, GPIO_PIN_SET); //beep1
+		  else
+			  HAL_GPIO_WritePin(BEEP1_GPIO_Port, BEEP1_Pin, GPIO_PIN_RESET); 
+		
+		  if (mb_mapping->tab_bits[1])
+		HAL_GPIO_WritePin(BEEP2_GPIO_Port, BEEP2_Pin, GPIO_PIN_SET); //beep2
+		  else
+			  HAL_GPIO_WritePin(BEEP2_GPIO_Port, BEEP2_Pin, GPIO_PIN_RESET); 
+		
+		  if (mb_mapping->tab_bits[2])
+		HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET); //LED1
+		  else
+			  HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET); 
+		  if (mb_mapping->tab_bits[3])
+		HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET); //LED2
+		  else
+			  HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET); 
+		  if (mb_mapping->tab_bits[4])
+		HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_RESET); //LED3
+		  else
+			  HAL_GPIO_WritePin(LED_B_GPIO_Port, LED_B_Pin, GPIO_PIN_SET);	  
+	
+	
+#endif
+
 
 	}
 

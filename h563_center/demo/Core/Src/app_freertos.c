@@ -59,6 +59,7 @@ static modbus_mapping_t * g_mb_mapping;
 
 SemaphoreHandle_t g_SwitchSemaphore;
 SemaphoreHandle_t g_MonitorSemaphore;
+SemaphoreHandle_t g_TempHumiSemaphore;
 SemaphoreHandle_t g_Uart2Mutex;
 
 modbus_t *g_uart2_ctx;
@@ -81,104 +82,6 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
-void CH1_SwitchTask(void *param)
-{
-	modbus_t *ctx;
-	int rc = 0;
-	uint16_t val;
-	int nb = 1;
-	uint8_t tab_bits[10];
-	uint16_t vals[10];
-	char buf[100];
-	int led_state;
-	
-	
-	ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
-
-	
-	rc = modbus_connect(ctx);
-	if (rc == -1) {
-		//fprintf(stderr, "Unable to connect %s\n", modbus_strerror(errno));
-		modbus_free(ctx);
-		vTaskDelete(NULL);;
-	}
-
-	for (;;) {
-		/* read switch key1~3 ID :1 
-		* display on lcd
-		*/
-		
-		modbus_set_slave(ctx, 1);
-		
-		rc = modbus_read_input_bits(ctx, 0, 3, tab_bits);
-		
-		if(rc == 3)
-		{
-			sprintf(buf, "switch tab input bit:%d %d %d",tab_bits[0], tab_bits[1], tab_bits[2]);
-			Draw_String(0, 0, buf, 0x00ff0000, 0x00ffffff);
-		}
-
-		rc = modbus_write_bit(ctx, 2, led_state);
-
-		/* read envs two adc values ID:2
-		*	display on lcd
-		*/
-
-		modbus_set_slave(ctx, 2);
-		
-		rc = modbus_read_input_registers(ctx, 0, 2, vals);
-		
-		if(rc == 2)
-		{
-			sprintf(buf, "ENV Senor : 0x%x 0x%x",vals[0], vals[1]);
-			Draw_String(0, 16 , buf, 0x00ff0000, 0x00ffffff);
-		}
-
-		rc = modbus_write_bit(ctx, 2, led_state);
-
-		led_state = !led_state;
-		
-		vTaskDelay(500);
-
-	}
-
-}
-
-
-void CH1_MonitorTask(void *param)
-{
-	modbus_t *ctx;
-	int rc;
-	uint16_t val;
-	int nb = 1;
-	uint16_t vals[2];
-	char buf[100];
-	
-	ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
-
-	
-	rc = modbus_connect(ctx);
-	if (rc == -1) {
-		//fprintf(stderr, "Unable to connect %s\n", modbus_strerror(errno));
-		modbus_free(ctx);
-		vTaskDelete(NULL);;
-	}
-
-	for (;;) {
-
-		/* read monitor adc ID:2 */
-    	modbus_set_slave(ctx, 2);
-		rc = modbus_read_input_registers(ctx, 0, 2, vals);
-		if (rc == 2)
-		{
-			sprintf(buf, "ENV Sensor : opti 0x%x, res 0x%x          ", vals[0], vals[1]);
-			Draw_String(0, 16, buf, 0xff0000, 0);
-		}
-		
-		vTaskDelay(500);
-	}
-}
-
 /* 负责上位机通信以及通知传感器需要修改数据 */
 
 void LibModbusServerTask(void *param)
@@ -187,7 +90,7 @@ void LibModbusServerTask(void *param)
 	modbus_t *ctx;
 	int rc;
 	modbus_mapping_t *mb_mapping;
-	uint8_t mb_mapping_backend[12];
+	uint8_t mb_mapping_backend[17];
 	
 	
 	ctx = modbus_new_st_rtu("usb", 115200, 'N', 8, 1);
@@ -195,7 +98,7 @@ void LibModbusServerTask(void *param)
 	query = pvPortMalloc(MODBUS_RTU_MAX_ADU_LENGTH);
 
 	mb_mapping = g_mb_mapping;
-	memcpy(mb_mapping_backend, mb_mapping->tab_bits, 11);
+	memcpy(mb_mapping_backend, mb_mapping->tab_bits, 16);
 	
 
 	rc = modbus_connect(ctx);
@@ -236,6 +139,13 @@ void LibModbusServerTask(void *param)
 				xSemaphoreGive(g_MonitorSemaphore);
 				memcpy(&mb_mapping_backend[6], &mb_mapping->tab_bits[6], 5);
 			}		
+			
+			if(0 != memcmp(&mb_mapping_backend[11], &mb_mapping->tab_bits[11], 5))
+			{
+				/* notice task 3 */
+				xSemaphoreGive(g_TempHumiSemaphore);
+				memcpy(&mb_mapping_backend[11], &mb_mapping->tab_bits[11], 5);
+			}
 		
 		if (mb_mapping->tab_bits[0])
 			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
@@ -363,6 +273,55 @@ void Task3MonitorTask(void *param)
 
 }
 
+void Task4TempHumiTask(void *param)
+{
+	modbus_t *ctx;
+	int rc = 0;
+	uint16_t val;
+	int nb = 1;
+	uint8_t tab_bits[10];
+	uint16_t vals[10];
+	char buf[100];
+	
+	ctx = modbus_new_st_rtu("uart4", 115200, 'N', 8, 1);
+	modbus_set_slave(ctx, 3);
+
+	
+	rc = modbus_connect(ctx);
+	if (rc == -1) {
+		//fprintf(stderr, "Unable to connect %s\n", modbus_strerror(errno));
+		modbus_free(ctx);
+		vTaskDelete(NULL);;
+	}
+
+	for (;;) {
+
+		vTaskDelay(20);
+		rc = modbus_read_input_registers(ctx, 0, 2, vals);
+
+		if(rc == 2)
+		{
+			sprintf(buf, "TempHumiSenor : temp:%d humi:%d",vals[0], vals[1]);
+			Draw_String(0, 32 , buf, 0x00ff0000, 0x00ffffff);
+			memcpy(&g_mb_mapping->tab_input_registers[2], vals, 4);
+		}
+
+		
+		/* wait for semphore to change state */
+		if(pdTRUE == xSemaphoreTake(g_TempHumiSemaphore, 500))
+			{
+				vTaskDelay(20);
+				modbus_set_slave(ctx, 3);
+				modbus_write_bits(ctx, 0, 5, &g_mb_mapping->tab_bits[11]);
+			}
+
+		
+		vTaskDelay(30);
+
+	}
+
+}
+
 
 
 
@@ -399,9 +358,10 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-	g_mb_mapping = modbus_mapping_new_start_address(0,11,0,3,0,0,0,2);
+	g_mb_mapping = modbus_mapping_new_start_address(0,16,0,3,0,0,0,4);
   g_SwitchSemaphore = xSemaphoreCreateBinary();
 	g_MonitorSemaphore = xSemaphoreCreateBinary();
+	g_TempHumiSemaphore = xSemaphoreCreateBinary();
 	g_Uart2Mutex = xSemaphoreCreateMutex();
 	g_uart2_ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
 
@@ -429,7 +389,13 @@ void MX_FREERTOS_Init(void) {
                    NULL
                           );	
 													
-													
+	xTaskCreate(    Task4TempHumiTask,
+                  "Task4TempHumiTask",
+                   400,
+                   NULL,
+                   osPriorityNormal,
+                   NULL
+                          );	
 
 		/* 测试uart的modbus协议是否正确工作
 		* 测试结果 uart2和4均可以正常工作
@@ -482,8 +448,6 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
-		vTaskDelay(500);
 		ux_system_tasks_run();
   }
   /* USER CODE END defaultTask */
