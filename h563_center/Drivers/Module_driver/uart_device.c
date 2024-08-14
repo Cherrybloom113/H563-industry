@@ -71,6 +71,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
 	PUART_Data pData;
+	static uint16_t old_pos;
 	
 	if(huart == &huart4)
 	{
@@ -82,14 +83,21 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 		pData = &UART2_Data;
 	}	
 		/* write queue */
-	for(int i = 0;i < Size;i++)
+	for(int i = old_pos;i < Size;i++)
 	{
 		 xQueueSendFromISR(pData->uart_rx_queue,  (const void *)&pData->uart_rx_buf[i], NULL);
 	}
+
+	old_pos = Size;
 	
 	/* restart rx */
 	
-	HAL_UARTEx_ReceiveToIdle_DMA(pData->huart, pData->uart_rx_buf, 100);
+	if (huart->RxEventType != HAL_UART_RXEVENT_HT)
+	{
+		old_pos = 0;
+		/* re-start DMA+IDLE rx */
+		HAL_UARTEx_ReceiveToIdle_DMA(pData->huart, pData->uart_rx_buf, MAX_UART_RX_BUF_LEN);
+	}
 	
 
 }
@@ -163,7 +171,7 @@ static int UART_Rx_Start(UART_Device *pDev, int baud, char parity, int data_bit,
 	
 	if(!pUartData->uart_rx_queue)
 	{
-		pUartData->uart_rx_queue = xQueueCreate(200,1);
+		pUartData->uart_rx_queue = xQueueCreate(10240,1);
 		pUartData->uart_send_semaphore = xSemaphoreCreateBinary();
 		
 		HAL_UARTEx_ReceiveToIdle_DMA(pUartData->huart, pUartData->uart_rx_buf, MAX_UART_RX_BUF_LEN);		

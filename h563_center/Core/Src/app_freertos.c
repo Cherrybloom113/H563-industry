@@ -323,6 +323,124 @@ void Task4TempHumiTask(void *param)
 }
 
 
+/* test write file record */
+static void CH2_UART4_ServerTask( void *pvParameters )	
+{
+	uint8_t *query;
+	modbus_t *ctx;
+	int rc;
+	modbus_mapping_t *mb_mapping;
+	char buf[100];
+	int cnt = 0;
+	
+	ctx = modbus_new_st_rtu("uart4", 115200, 'N', 8, 1);
+	modbus_set_slave(ctx, 1);
+	query = pvPortMalloc(MODBUS_RTU_MAX_ADU_LENGTH);
+
+	mb_mapping = modbus_mapping_new_start_address(0,
+												  10,
+												  0,
+												  10,
+												  0,
+												  10,
+												  0,
+												  10);
+	
+	memset(mb_mapping->tab_bits, 0, mb_mapping->nb_bits);
+	memset(mb_mapping->tab_registers, 0x55, mb_mapping->nb_registers*2);
+    
+	rc = modbus_connect(ctx);
+	if (rc == -1) {
+		//fprintf(stderr, "Unable to connect %s\n", modbus_strerror(errno));
+		modbus_free(ctx);
+		vTaskDelete(NULL);
+	}
+
+	for (;;) {
+		do {
+			rc = modbus_receive(ctx, query);
+			/* Filtered queries return 0 */
+		} while (rc == 0);
+ 
+		/* The connection is not closed on errors which require on reply such as
+		   bad CRC in RTU. */
+		if (rc < 0 ) {
+			/* Quit */
+			continue;
+		}
+
+		rc = modbus_reply(ctx, query, rc, mb_mapping);
+		if (rc == -1) {
+			//break;
+		}
+
+        cnt++;
+        
+        sprintf(buf, "server recv file record cnt = %d", cnt);
+        Draw_String(0, 32, buf, 0xff0000, 0);
+
+		if (mb_mapping->tab_bits[0])
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+		else
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+
+		//vTaskDelay(1000);
+		mb_mapping->tab_registers[1]++;
+	}
+
+	modbus_mapping_free(mb_mapping);
+	vPortFree(query);
+	/* For RTU */
+	modbus_close(ctx);
+	modbus_free(ctx);
+
+	vTaskDelete(NULL);
+}
+
+
+static void CH1_UART2_ClientTask( void *pvParameters )	
+{
+	modbus_t *ctx;
+	int rc;
+	uint16_t val;
+	int nb = 1;
+	int level = 1;
+	char buf[100];
+	int cnt = 0;
+    int err_cnt = 0;
+	
+	ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
+	modbus_set_slave(ctx, 1);
+	
+	rc = modbus_connect(ctx);
+	if (rc == -1) {
+		//fprintf(stderr, "Unable to connect %s\n", modbus_strerror(errno));
+		modbus_free(ctx);
+		vTaskDelete(NULL);;
+	}
+
+	for (;;) {
+        memset(buf, 0x5A, 100);
+        rc = modbus_write_file_record(ctx, 1, 1, buf, 100);
+        cnt++;
+
+        if (rc < 0)
+            err_cnt++;
+
+        sprintf(buf, "client send file record cnt = %d, err_cnt = %d", cnt, err_cnt);
+        Draw_String(0, 0, buf, 0xff0000, 0);
+            
+		/* delay 2s */
+		vTaskDelay(2000);
+	}
+
+	/* For RTU */
+	modbus_close(ctx);
+	modbus_free(ctx);
+
+	vTaskDelete(NULL);
+}
+
 
 
 
@@ -358,44 +476,44 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-	g_mb_mapping = modbus_mapping_new_start_address(0,16,0,3,0,0,0,4);
-  g_SwitchSemaphore = xSemaphoreCreateBinary();
-	g_MonitorSemaphore = xSemaphoreCreateBinary();
-	g_TempHumiSemaphore = xSemaphoreCreateBinary();
-	g_Uart2Mutex = xSemaphoreCreateMutex();
-	g_uart2_ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
+//	g_mb_mapping = modbus_mapping_new_start_address(0,16,0,3,0,0,0,4);
+//    g_SwitchSemaphore = xSemaphoreCreateBinary();
+//	g_MonitorSemaphore = xSemaphoreCreateBinary();
+//	g_TempHumiSemaphore = xSemaphoreCreateBinary();
+//	g_Uart2Mutex = xSemaphoreCreateMutex();
+//	g_uart2_ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
 
-	xTaskCreate(    LibModbusServerTask,
-                  "LibModbusServerTask",
-                   400,
-                   NULL,
-                   osPriorityNormal,
-                   NULL
-                          );	
-			
-	xTaskCreate(    Task2SwitchTask,
-                  "Task2SwitchTask",
-                   400,
-                   NULL,
-                   osPriorityNormal,
-                   NULL
-                          );		
-	
-	xTaskCreate(    Task3MonitorTask,
-                  "Task3MonitorTask",
-                   400,
-                   NULL,
-                   osPriorityNormal,
-                   NULL
-                          );	
-													
-	xTaskCreate(    Task4TempHumiTask,
-                  "Task4TempHumiTask",
-                   400,
-                   NULL,
-                   osPriorityNormal,
-                   NULL
-                          );	
+//	xTaskCreate(    LibModbusServerTask,
+//                  "LibModbusServerTask",
+//                   400,
+//                   NULL,
+//                   osPriorityNormal,
+//                   NULL
+//                          );	
+//			
+//	xTaskCreate(    Task2SwitchTask,
+//                  "Task2SwitchTask",
+//                   400,
+//                   NULL,
+//                   osPriorityNormal,
+//                   NULL
+//                          );		
+//	
+//	xTaskCreate(    Task3MonitorTask,
+//                  "Task3MonitorTask",
+//                   400,
+//                   NULL,
+//                   osPriorityNormal,
+//                   NULL
+//                          );	
+//													
+//	xTaskCreate(    Task4TempHumiTask,
+//                  "Task4TempHumiTask",
+//                   400,
+//                   NULL,
+//                   osPriorityNormal,
+//                   NULL
+//                          );	
 
 		/* ����uart��modbusЭ���Ƿ���ȷ����
 		* ���Խ�� uart2��4��������������
@@ -427,6 +545,23 @@ void MX_FREERTOS_Init(void) {
                           );			
 
 #endif
+
+  xTaskCreate(
+	  CH1_UART2_ClientTask, // 函数指针, 任务函数
+	  "CH1_UART2_ClientTask", // 任务的名
+	  400, // 栿
+	  NULL, // 调用任务函数时传入的参数
+	  osPriorityNormal, // 优先线
+	  NULL); // 任务句柄, 以后使用它来操作这个任务
+
+  xTaskCreate(
+	  CH2_UART4_ServerTask, // 函数指针, 任务函数
+	  "CH2_UART4_ServerTask", // 任务的名
+	  400, // 栿
+	  NULL, // 调用任务函数时传入的参数
+	  osPriorityNormal, // 优先线
+	  NULL); // 任务句柄, 以后使用它来操作这个任务
+
 
   /* USER CODE END RTOS_THREADS */
 

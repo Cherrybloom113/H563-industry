@@ -73,6 +73,7 @@ MODBUS_BEGIN_DECLS
 #define MODBUS_FC_WRITE_MULTIPLE_COILS     0x0F
 #define MODBUS_FC_WRITE_MULTIPLE_REGISTERS 0x10
 #define MODBUS_FC_REPORT_SLAVE_ID          0x11
+#define MODBUS_FC_WRITE_FILE_RECORD		   0x15
 #define MODBUS_FC_MASK_WRITE_REGISTER      0x16
 #define MODBUS_FC_WRITE_AND_READ_REGISTERS 0x17
 
@@ -239,6 +240,7 @@ MODBUS_API int modbus_write_and_read_registers(modbus_t *ctx,
                                                int read_addr,
                                                int read_nb,
                                                uint16_t *dest);
+																							 
 MODBUS_API int modbus_report_slave_id(modbus_t *ctx, int max_dest, uint8_t *dest);
 
 MODBUS_API modbus_mapping_t *
@@ -272,6 +274,8 @@ MODBUS_API int
 modbus_reply_exception(modbus_t *ctx, const uint8_t *req, unsigned int exception_code);
 MODBUS_API int modbus_enable_quirks(modbus_t *ctx, unsigned int quirks_mask);
 MODBUS_API int modbus_disable_quirks(modbus_t *ctx, unsigned int quirks_mask);
+MODBUS_API int modbus_write_file_record(modbus_t *ctx, uint16_t file_no, uint16_t record_no, uint8_t *dataBuf, uint16_t len);
+
 
 /**
  * UTILS FUNCTIONS

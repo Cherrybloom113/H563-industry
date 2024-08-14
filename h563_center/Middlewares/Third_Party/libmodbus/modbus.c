@@ -110,7 +110,7 @@ static void _sleep_response_timeout(modbus_t *ctx)
     Sleep((ctx->response_timeout.tv_sec * 1000) + (ctx->response_timeout.tv_usec / 1000));
 #else
     /* usleep source code */
-	vTaskDelay(ctx->response_timeout.tv_sec / 1000 + ctx->response_timeout.tv_usec * 1000);
+	vTaskDelay(ctx->response_timeout.tv_sec * 1000 + ctx->response_timeout.tv_usec / 1000);
 //    while (nanosleep(&request, &remaining) == -1 && errno == EINTR) {
 //        request = remaining;
 //    }
@@ -162,6 +162,9 @@ static unsigned int compute_response_length_from_request(modbus_t *ctx, uint8_t 
         return MSG_LENGTH_UNDEFINED;
     case MODBUS_FC_MASK_WRITE_REGISTER:
         length = 7;
+        break;
+    case MODBUS_FC_WRITE_FILE_RECORD:
+         length = req[offset + 1] + 2;
         break;
     default:
         length = 5;
@@ -285,10 +288,12 @@ static uint8_t compute_meta_length_after_function(int function, msg_type_t msg_t
             length = 6;
         } else if (function == MODBUS_FC_WRITE_AND_READ_REGISTERS) {
             length = 9;
-        } else {
-            /* MODBUS_FC_READ_EXCEPTION_STATUS, MODBUS_FC_REPORT_SLAVE_ID */
-            length = 0;
-        }
+        } else if (function == MODBUS_FC_WRITE_FILE_RECORD) {
+						length = 8;
+        }else {
+			/* MODBUS_FC_READ_EXCEPTION_STATUS, MODBUS_FC_REPORT_SLAVE_ID */
+			length = 0;
+		}
     } else {
         /* MSG_CONFIRMATION */
         switch (function) {
@@ -301,6 +306,9 @@ static uint8_t compute_meta_length_after_function(int function, msg_type_t msg_t
         case MODBUS_FC_MASK_WRITE_REGISTER:
             length = 6;
             break;
+        case MODBUS_FC_WRITE_FILE_RECORD:
+        	length = 8;
+        	break;
         default:
             length = 1;
         }
@@ -325,6 +333,9 @@ compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
         case MODBUS_FC_WRITE_AND_READ_REGISTERS:
             length = msg[ctx->backend->header_length + 9];
             break;
+        case MODBUS_FC_WRITE_FILE_RECORD:
+        	length = msg[ctx->backend->header_length + 1] - 7;
+        	break;
         default:
             length = 0;
         }
@@ -334,7 +345,9 @@ compute_data_length_after_meta(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type)
             function == MODBUS_FC_REPORT_SLAVE_ID ||
             function == MODBUS_FC_WRITE_AND_READ_REGISTERS) {
             length = msg[ctx->backend->header_length + 1];
-        } else {
+        } else if (function == MODBUS_FC_WRITE_FILE_RECORD) 
+			length = msg[ctx->backend->header_length + 1] - 7;
+        else {
             length = 0;
         }
     }
@@ -648,6 +661,12 @@ static int check_confirmation(modbus_t *ctx, uint8_t *req, uint8_t *rsp, int rsp
             /* 1 Write functions & others */
             req_nb_value = rsp_nb_value = 1;
             break;
+         case MODBUS_FC_WRITE_FILE_RECORD:
+         	if(!memcmp(req, rsp, rsp_length))
+         	{
+         		req_nb_value = rsp_nb_value = req[2] - 7;
+         	 }
+			 break;
         default:
             /* 1 Write functions & others */
             req_nb_value = rsp_nb_value = 1;
@@ -995,6 +1014,10 @@ int modbus_reply(modbus_t *ctx,
             memcpy(rsp + rsp_length, req + rsp_length, 4);
             rsp_length += 4;
         }
+    } break;
+    case MODBUS_FC_WRITE_FILE_RECORD: {
+        memcpy(rsp, req, req_length);
+        rsp_length = req_length;
     } break;
     case MODBUS_FC_REPORT_SLAVE_ID: {
         int str_len;
@@ -1632,6 +1655,61 @@ int modbus_write_and_read_registers(modbus_t *ctx,
 
     return rc;
 }
+
+/* write file */
+#define MAX_FILE_RECCORD_MESSAGE_LENGTH		256
+
+int modbus_write_file_record(modbus_t *ctx, uint16_t file_no, uint16_t record_no, uint8_t *dataBuf, uint16_t len)
+{
+	int rc;
+	int req_length;
+	uint8_t req[MAX_FILE_RECCORD_MESSAGE_LENGTH];
+
+	len = (len + 1) & (~0x1);
+
+	/* 这里的len是我们数据包的长度 */
+	if(len < 2 || len > 244)
+		return -1;
+
+	/* 构筑请求包头 */
+	req[0] = ctx->slave;
+	req[1] = MODBUS_FC_WRITE_FILE_RECORD;
+	req[2] = len + 7;
+	req[3] = 0x06;
+	
+	req[4] = file_no >> 8;
+	req[5] = file_no & 0x00ff;
+
+	req[6] = record_no >> 8;
+	req[7] = record_no & 0x00ff;
+
+	req[8] = (len / 2) >> 8;
+	req[9] = (len / 2) & 0x00ff;
+
+	/* 构筑数据包 */
+	req_length = 10;
+
+	for(int i = 0;i < len;i++)
+	{
+		req[req_length++] = dataBuf[i];
+	}
+
+	rc = send_msg(ctx, req, req_length);
+    if (rc > 0) {
+        /* Used by write_bit and write_register */
+        uint8_t rsp[MAX_MESSAGE_LENGTH];
+
+        rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
+        if (rc < 0)
+            return -2;
+
+        rc = check_confirmation(ctx, req, rsp, rc);
+    }
+
+    return rc;
+	
+}
+									
 
 /* Send a request to get the slave ID of the device (only available in serial
    communication). */

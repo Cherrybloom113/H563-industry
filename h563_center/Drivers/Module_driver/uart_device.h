@@ -8,7 +8,7 @@
 #include "queue.h"
 #include "usart.h"
 
-#define MAX_UART_RX_BUF_LEN		100
+#define MAX_UART_RX_BUF_LEN		260
 
 typedef struct UART_Device {
 		char *name;
