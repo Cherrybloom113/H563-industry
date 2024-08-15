@@ -1657,7 +1657,7 @@ int modbus_write_and_read_registers(modbus_t *ctx,
 }
 
 /* write file */
-#define MAX_FILE_RECCORD_MESSAGE_LENGTH		256
+#define MAX_FILE_RECCORD_MESSAGE_LENGTH		260
 
 int modbus_write_file_record(modbus_t *ctx, uint16_t file_no, uint16_t record_no, uint8_t *dataBuf, uint16_t len)
 {
@@ -1709,6 +1709,62 @@ int modbus_write_file_record(modbus_t *ctx, uint16_t file_no, uint16_t record_no
     return rc;
 	
 }
+
+
+
+
+
+static uint32_t LE32toBE32(uint8_t *buf)
+{
+   return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) | ((uint32_t)buf[3] << 0);
+}
+
+int modbus_write_file(modbus_t *ctx,
+                              uint16_t file_no,
+                              uint8_t *file_name,
+                              uint8_t *buffer,
+                              uint16_t len)
+{
+    FileInfo tFileInfo;
+    int rc;
+    uint16_t record_no = 0;
+    uint16_t pos = 0;
+    uint16_t send_len = 0;
+        
+    memset(&tFileInfo, 0, sizeof(tFileInfo));
+    
+    tFileInfo.file_len = len;
+    tFileInfo.file_len = LE32toBE32(&tFileInfo.file_len);
+    if (file_name)
+    {
+        strncpy(tFileInfo.file_name, file_name, sizeof(tFileInfo.file_name));
+    }
+
+    rc = modbus_write_file_record(ctx, file_no, record_no, &tFileInfo, sizeof(tFileInfo));
+    if (rc < 0)
+    {
+        return rc;
+    }
+    record_no++;
+
+    while (pos < len)
+    {
+        send_len = len - pos;
+        if (send_len > 101)
+            send_len = 101;  /* 选取一次发送240字节是为了便于烧录(烧录时一次烧写16字节) */
+        
+        rc = modbus_write_file_record(ctx, file_no, record_no, buffer + pos, send_len);
+        if (rc < 0)
+        {
+            return -5;
+        }
+        record_no++;
+        pos += send_len;
+    }
+
+    return 1;
+}
+
 									
 
 /* Send a request to get the slave ID of the device (only available in serial

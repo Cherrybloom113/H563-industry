@@ -37,8 +37,8 @@ MODBUS_BEGIN_DECLS
 
 /* Timeouts in microsecond (0.5 s) */
 /* 115200 -> 3.5T 10ms */
-#define _RESPONSE_TIMEOUT 10000
-#define _BYTE_TIMEOUT     10000
+#define _RESPONSE_TIMEOUT 500000
+#define _BYTE_TIMEOUT     20000
 
 typedef enum {
     _MODBUS_BACKEND_TYPE_RTU = 0,

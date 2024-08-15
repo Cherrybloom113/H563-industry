@@ -188,6 +188,14 @@ typedef enum {
     MODBUS_QUIRK_ALL = 0xFF
 } modbus_quirks;
 
+typedef struct FileInfo {
+	uint32_t version;
+	uint32_t file_len;
+	uint32_t load_addr;
+	uint32_t crc32;
+	uint8_t file_name[16];
+}FileInfo, *PFileInfo;
+
 MODBUS_API int modbus_set_slave(modbus_t *ctx, int slave);
 MODBUS_API int modbus_get_slave(modbus_t *ctx);
 MODBUS_API int modbus_set_error_recovery(modbus_t *ctx,
@@ -275,6 +283,11 @@ modbus_reply_exception(modbus_t *ctx, const uint8_t *req, unsigned int exception
 MODBUS_API int modbus_enable_quirks(modbus_t *ctx, unsigned int quirks_mask);
 MODBUS_API int modbus_disable_quirks(modbus_t *ctx, unsigned int quirks_mask);
 MODBUS_API int modbus_write_file_record(modbus_t *ctx, uint16_t file_no, uint16_t record_no, uint8_t *dataBuf, uint16_t len);
+MODBUS_API int modbus_write_file(modbus_t *ctx,
+                              uint16_t file_no,
+                              uint8_t *file_name,
+                              uint8_t *buffer,
+                              uint16_t len);
 
 
 /**

@@ -323,6 +323,41 @@ void Task4TempHumiTask(void *param)
 }
 
 
+static uint32_t BE32toLE32(uint8_t *buf)
+{
+    return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) | ((uint32_t)buf[3] << 0);
+}
+
+static void modbus_parse_file_record(uint8_t *msg, uint16_t msg_len)
+{
+    uint16_t record_no;
+    FileInfo tFileInfo;
+    char buf[100];
+    static int recv_len = 0;
+    
+    if (msg[1] == MODBUS_FC_WRITE_FILE_RECORD)
+    {
+        record_no = ((uint16_t)msg[6]<<8) | msg[7];
+        if (record_no == 0)
+        {
+            tFileInfo = *((PFileInfo)&msg[10]);
+            tFileInfo.file_len = BE32toLE32(&tFileInfo.file_len);
+            sprintf(buf, "Get File Record for Head, file len = %d", tFileInfo.file_len);
+            Draw_String(0, 32, buf, 0xff0000, 0);
+
+            recv_len = 0;
+        }
+        else
+        {
+            recv_len += msg[2] - 7;
+            
+            sprintf(buf, "Get File Record %d for Data, record len = %d, recv_len = %d   ", record_no, msg[2] - 7, recv_len);
+            Draw_String(0, 64, buf, 0xff0000, 0);            
+        }
+    }
+}
+
+
 /* test write file record */
 static void CH2_UART4_ServerTask( void *pvParameters )	
 {
@@ -375,9 +410,9 @@ static void CH2_UART4_ServerTask( void *pvParameters )
 		}
 
         cnt++;
-        
-        sprintf(buf, "server recv file record cnt = %d", cnt);
-        Draw_String(0, 32, buf, 0xff0000, 0);
+
+		modbus_parse_file_record(query, rc);
+
 
 		if (mb_mapping->tab_bits[0])
 			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
@@ -405,12 +440,14 @@ static void CH1_UART2_ClientTask( void *pvParameters )
 	uint16_t val;
 	int nb = 1;
 	int level = 1;
-	char buf[100];
+	char *buf;
 	int cnt = 0;
     int err_cnt = 0;
 	
 	ctx = modbus_new_st_rtu("uart2", 115200, 'N', 8, 1);
 	modbus_set_slave(ctx, 1);
+
+	buf = pvPortMalloc(500);
 	
 	rc = modbus_connect(ctx);
 	if (rc == -1) {
@@ -420,8 +457,8 @@ static void CH1_UART2_ClientTask( void *pvParameters )
 	}
 
 	for (;;) {
-        memset(buf, 0x5A, 100);
-        rc = modbus_write_file_record(ctx, 1, 1, buf, 100);
+        memset(buf, 0x5A, 500);
+        rc = modbus_write_file(ctx, 1, "1.txt", buf, 500);
         cnt++;
 
         if (rc < 0)

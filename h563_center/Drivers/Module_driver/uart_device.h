@@ -23,7 +23,7 @@ typedef struct UART_Data
 {
 	UART_HandleTypeDef* huart;
 	SemaphoreHandle_t uart_send_semaphore;
-	uint8_t  uart_rx_buf[100];
+	uint8_t  uart_rx_buf[MAX_UART_RX_BUF_LEN];
 	QueueHandle_t uart_rx_queue;
 }UART_Data,*PUART_Data;
 
