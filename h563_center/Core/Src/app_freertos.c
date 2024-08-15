@@ -34,6 +34,8 @@
 #include "task.h"
 #include "queue.h"
 
+#include "control.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -581,8 +583,8 @@ void MX_FREERTOS_Init(void) {
                    NULL
                           );			
 
-#endif
 
+	/* test write file */
   xTaskCreate(
 	  CH1_UART2_ClientTask, // å‡½æ•°æŒ‡é’ˆ, ä»»åŠ¡å‡½æ•°
 	  "CH1_UART2_ClientTask", // ä»»åŠ¡çš„å
@@ -598,6 +600,16 @@ void MX_FREERTOS_Init(void) {
 	  NULL, // è°ƒç”¨ä»»åŠ¡å‡½æ•°æ—¶ä¼ å…¥çš„å‚æ•°
 	  osPriorityNormal, // ä¼˜å…ˆçº¿
 	  NULL); // ä»»åŠ¡å¥æŸ„, ä»¥åä½¿ç”¨å®ƒæ¥æ“ä½œè¿™ä¸ªä»»åŠ¡
+		
+#endif		
+		
+	xTaskCreate(
+		LibmodbusServerTask, // º¯ÊıÖ¸Õë, ÈÎÎñº¯Êı
+		"LibmodbusServerTask", // ÈÎÎñµÄÃû??
+		400, // Õ»´ó??,µ¥Î»Îªword,10±íÊ¾40×Ö½Ú
+		NULL, // µ÷ÓÃÈÎÎñº¯ÊıÊ±´«ÈëµÄ²ÎÊı
+		osPriorityNormal, // ÓÅÏÈ??
+		NULL); // ÈÎÎñ¾ä±ú, ÒÔºóÊ¹ÓÃËüÀ´²Ù×÷Õâ¸öÈÎÎñ		
 
 
   /* USER CODE END RTOS_THREADS */

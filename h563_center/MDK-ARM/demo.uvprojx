@@ -812,6 +812,11 @@
                 </FileArmAds>
               </FileOption>
             </File>
+            <File>
+              <FileName>control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\control.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
